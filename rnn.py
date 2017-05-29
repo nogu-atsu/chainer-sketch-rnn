@@ -26,10 +26,10 @@ if args.out_dir != None:
         try:
             os.mkdir(args.out_dir)
         except:
-            print 'cannot make directory {}'.format(args.out_dir)
+            print('cannot make directory {}'.format(args.out_dir))
             exit()
     elif not os.path.isdir(args.out_dir):
-        print 'file path {} exists but is not directory'.format(args.out_dir)
+        print('file path {} exists but is not directory'.format(args.out_dir))
         exit()
             
             
@@ -129,11 +129,12 @@ class sketch_rnn(chainer.Chain):
     def chainer_2d_normal(self, x1, x2, mu1, mu2, s1, s2, rho):
         norm1 = x1 - mu1
         norm2 = x2 - mu2
-        s1s2 = s1 * s2
-        z = F.square(norm1 / s1) + F.square(norm2 / s2) - 2 * (rho * norm1 * norm2) / s1s2
-        neg_rho = 1 - F.square(rho)
+        s1s2 = s1 * s2 + 1e-15
+        eps = 1e-15
+        z = F.square(norm1 / (s1+ eps)) + F.square(norm2 / (s2 + eps)) - 2 * (rho * norm1 * norm2) / s1s2
+        neg_rho = 1 - F.square(rho)+1e-15
         result = F.exp(- z / (2 * neg_rho))
-        denom = (2 * np.pi) * s1s2 * F.sqrt(neg_rho)
+        denom = (2 * np.pi) * s1s2 * F.sqrt(neg_rho) + 1e-15
         result /= denom
         return result
     
@@ -206,17 +207,17 @@ class sketch_rnn(chainer.Chain):
 batchsize = 16
 
 sr = sketch_rnn(128, 20)
-serializers.load_hdf5(args.out_dir + 'sketch-rnn23500.model',sr)
+serializers.load_hdf5(args.out_dir + 'sketch-rnn52000.model',sr)
 sr.to_gpu()
 
-optimizer = optimizers.MomentumSGD(0.05,0.9)
+optimizer = optimizers.MomentumSGD(0.005,0.9)
 #optimizer = optimizers.Adam(alpha=0.01)
 optimizer.setup(sr)
-#optimizer.add_hook(chainer.optimizer.WeightDecay(0.001))
+#optimizer.add_hook(chainer.optimizer.WeightDecay(0.0001))
 optimizer.add_hook(chainer.optimizer.GradientClipping(5.))
 
 
-for epoch in range(23501, 100000):
+for epoch in range(52001, 100000):
     optimizer.lr *= 0.99996
     sr.zerograds()
     inds = np.random.randint(0, len(data), batchsize)
