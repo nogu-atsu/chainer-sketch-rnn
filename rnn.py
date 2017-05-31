@@ -49,14 +49,6 @@ data = [xp.concatenate([xp.array(d[:,:2]),one_hot[d[:,2].astype(xp.int32)]],axis
 data2 = [Variable(xp.concatenate([d, xp.array([[0, 0, 0, 0, 1]],dtype=xp.float32)[np.zeros(l_max-d.shape[0]+1,dtype=np.int32)]])) for d in data]
 data = [Variable(xp.concatenate([d, xp.array([[0, 0, 0, 0, 1]],dtype=xp.float32)[np.zeros(1,dtype=np.int32)]])) for d in data]
 
-"""
-l1=L.NStepLSTM(1, 5, 50, 0.5)
-l1.to_gpu()
-h1,c1,y1=l1(xp.zeros((1,len(data),50),xp.float32),xp.zeros((1,len(data),50),xp.float32),data,False)
-print(h1.shape)#最終隠れ層の状態 (1, 11167, 50)
-print(c1.shape)#最終セル状態 (1, 11167, 50)
-print(len(y1),y1[0].shape)#出力xバッチ数 11167  (12, 50)
-"""
 def show_data(data, path):
     for i in range(len(data)):
         plt.subplot(8,4,i+1)
@@ -165,7 +157,7 @@ class sketch_rnn(chainer.Chain):
         #_, y = self.l(h0.reshape(1, len(x), -1), x_, train)
         y = [self.l5(y_) for y_ in y]
         loss = [self.get_lossfunc(F.softmax(y_[:,:self.gmm_m]), y_[:,self.gmm_m:self.gmm_m*2], y_[:,self.gmm_m*2:self.gmm_m*3], F.exp(y_[:,self.gmm_m*3:self.gmm_m*4]), F.exp(y_[:,self.gmm_m*4:self.gmm_m*5]), F.tanh(y_[:,self.gmm_m*5:self.gmm_m*6]), y_[:,-3:], t_.data[:,:1], t_.data[:,1:2], t_.data[:,-3:]) for y_,t_ in zip(y, x2)]
-        return sum(loss)
+        return sum(loss) - F.sum(1 + sigma - F.square(mean) - F.exp(sigma)) / mean.shape[1]
     
     def sample(self, x, tmp=0.01):
         h = self.bl(x, False)
@@ -207,18 +199,18 @@ class sketch_rnn(chainer.Chain):
 batchsize = 16
 
 sr = sketch_rnn(128, 20)
-serializers.load_hdf5(args.out_dir + 'sketch-rnn52000.model',sr)
+serializers.load_hdf5(args.out_dir + 'sketch-rnn_adam63500.model',sr)
 sr.to_gpu()
 
-optimizer = optimizers.MomentumSGD(0.005,0.9)
-#optimizer = optimizers.Adam(alpha=0.01)
+#optimizer = optimizers.MomentumSGD(0.0003,0.6)
+optimizer = optimizers.Adam(alpha=0.0004)
 optimizer.setup(sr)
 #optimizer.add_hook(chainer.optimizer.WeightDecay(0.0001))
 optimizer.add_hook(chainer.optimizer.GradientClipping(5.))
 
 
-for epoch in range(52001, 100000):
-    optimizer.lr *= 0.99996
+for epoch in range(63501, 1000000):
+    optimizer.alpha *= 0.99996
     sr.zerograds()
     inds = np.random.randint(0, len(data), batchsize)
     #xs = random.sample(data, batchsize)
@@ -226,13 +218,13 @@ for epoch in range(52001, 100000):
     xs2 = [data2[ind] for ind in inds]
     loss = sr(xs, xs2)
     if epoch%10==0:
-        print(epoch, loss.data/batchsize, "lr", optimizer.lr)
+        print(epoch, loss.data/batchsize, "lr", optimizer.alpha)
         
     loss.backward()
     loss.unchain_backward()
     optimizer.update()
     if epoch%500==0:
-        serializers.save_hdf5(args.out_dir + 'sketch-rnn{}.model'.format(str(epoch)), sr)
+        serializers.save_hdf5(args.out_dir + 'sketch-rnn_adam{}.model'.format(str(epoch)), sr)
         
         sampled = sr.sample(data[100:116])+[cuda.to_cpu(d.data) for d in data[100:116]]
-        show_data(sampled, "output{}.jpg".format(str(epoch)))
+        show_data(sampled, "output_adam{}.jpg".format(str(epoch)))
